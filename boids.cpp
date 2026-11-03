@@ -45,8 +45,9 @@ struct Settings {
     float maxSpeed = 3.2f;           // top speed in pixels per frame
     float minSpeed = 1.4f;           // keeps the flock from stalling
     float maxSteerForce = 0.07f;     // limit on how sharply a boid can turn
-    float mouseRadius = 150.0f;      // reach of the attract and scare effect
-    float mouseStrength = 0.22f;     // strength of the attract and scare effect
+    float mouseRadius = 260.0f;      // reach of the attract and scare effect
+    float maxMouseSteer = 0.35f;     // strongest turn the cursor can force on a boid per frame
+    float mouseArriveRadius = 70.0f; // boids slow down inside this distance so they gather at the cursor
 };
 
 // Global state, needed because the Emscripten main loop takes a plain function
@@ -220,11 +221,28 @@ void UpdateFlock(bool attractPressed, bool scarePressed, const Vec2& mousePositi
             const float toMouseY = mousePosition.y - current.position.y;
             const float mouseDistance = std::sqrt(toMouseX * toMouseX + toMouseY * toMouseY);
             if (mouseDistance > 0.0f && mouseDistance < gSettings.mouseRadius) {
-                // Effect fades out toward the edge of the mouse radius
-                const float falloff = 1.0f - mouseDistance / gSettings.mouseRadius;
-                const float direction = attractPressed ? 1.0f : -1.0f;
-                acceleration.x += toMouseX / mouseDistance * falloff * gSettings.mouseStrength * direction;
-                acceleration.y += toMouseY / mouseDistance * falloff * gSettings.mouseStrength * direction;
+                // Influence is strongest near the cursor and fades toward the edge of the radius
+                const float influence = 1.0f - mouseDistance / gSettings.mouseRadius;
+                const float steerLimit = gSettings.maxMouseSteer * (0.35f + 0.65f * influence);
+
+                Vec2 desiredVelocity;
+                if (attractPressed) {
+                    // Seek: head for the cursor, slowing down as it gets close
+                    // so the flock gathers around it instead of flying straight past
+                    const float arriveFactor = std::min(1.0f, mouseDistance / gSettings.mouseArriveRadius);
+                    desiredVelocity = SetLength({toMouseX, toMouseY}, gSettings.maxSpeed * arriveFactor);
+                } else {
+                    // Flee: head directly away from the cursor at full speed
+                    desiredVelocity = SetLength({-toMouseX, -toMouseY}, gSettings.maxSpeed);
+                }
+
+                // Steering is the gap between the wanted velocity and the current one, capped by steerLimit
+                const Vec2 mouseSteer = Limit(
+                    {desiredVelocity.x - current.velocity.x, desiredVelocity.y - current.velocity.y},
+                    steerLimit
+                );
+                acceleration.x += mouseSteer.x;
+                acceleration.y += mouseSteer.y;
             }
         }
 
@@ -301,6 +319,32 @@ void DrawFlock()
     SDL_RenderGeometry(gRenderer, nullptr, vertices.data(), static_cast<int>(vertices.size()), nullptr, 0);
 }
 
+// Draws a soft ring around the cursor while a mouse button is held,
+// showing how far the attract or scare effect reaches
+void DrawMouseRing(const Vec2& mousePosition, bool attractPressed)
+{
+    constexpr int kRingSegments = 64;
+    SDL_FPoint ringPoints[kRingSegments + 1];
+
+    // Walk around a circle, closing the loop by repeating the first point at the end
+    for (int segment = 0; segment <= kRingSegments; ++segment) {
+        const float angle = 2.0f * kPi * static_cast<float>(segment) / static_cast<float>(kRingSegments);
+        ringPoints[segment] = {
+            mousePosition.x + std::cos(angle) * gSettings.mouseRadius,
+            mousePosition.y + std::sin(angle) * gSettings.mouseRadius,
+        };
+    }
+
+    SDL_SetRenderDrawBlendMode(gRenderer, SDL_BLENDMODE_BLEND);
+    if (attractPressed) {
+        SDL_SetRenderDrawColor(gRenderer, 240, 150, 190, 110);  // pink ring when attracting
+    } else {
+        SDL_SetRenderDrawColor(gRenderer, 120, 210, 200, 110);  // teal ring when scaring
+    }
+    SDL_RenderDrawLinesF(gRenderer, ringPoints, kRingSegments + 1);
+    SDL_SetRenderDrawBlendMode(gRenderer, SDL_BLENDMODE_NONE);
+}
+
 // Runs once per browser animation frame
 void RunFrame()
 {
@@ -322,6 +366,9 @@ void RunFrame()
     SDL_SetRenderDrawColor(gRenderer, 22, 26, 40, 255);
     SDL_RenderClear(gRenderer);
     DrawFlock();
+    if (attractPressed || scarePressed) {
+        DrawMouseRing(mousePosition, attractPressed);
+    }
     SDL_RenderPresent(gRenderer);
 }
 
