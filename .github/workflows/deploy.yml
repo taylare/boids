@@ -31,11 +31,12 @@ jobs:
       - name: Set up Emscripten
         uses: mymindstorm/setup-emsdk@v14
 
-      # Compile C++ to WebAssembly, using shell.html as the page template
-      - name: Build with emcc
+      # Compile C++ to WebAssembly, using shell.html as the page template.
+      # em++ (not emcc) is required so the C++ standard library gets linked.
+      - name: Build with em++
         run: |
           mkdir -p dist
-          emcc boids.cpp \
+          em++ boids.cpp \
             -O3 \
             -std=c++17 \
             -sUSE_SDL=2 \
