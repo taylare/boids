@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Boids Flocking Simulation</title>
+  <style>
+    /* Colour tokens, change these to match your e-portfolio theme */
+    :root {
+      --page-bg: #f6efe9;
+      --panel-bg: #ffffff;
+      --text: #3b3347;
+      --accent: #c0728f;
+      --radius: 16px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 24px 16px 48px;
+      background: var(--page-bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      display: flex;
+      justify-content: center;
+    }
+
+    main { width: 100%; max-width: 900px; }
+
+    h1 { margin: 0 0 4px; font-size: 1.8rem; }
+    p.hint { margin: 0 0 16px; opacity: 0.75; }
+
+    /* The canvas keeps a 3:2 shape and scales to the page width */
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 3 / 2;
+      border-radius: var(--radius);
+      box-shadow: 0 10px 30px rgba(59, 51, 71, 0.25);
+      touch-action: none; /* stops the page scrolling while touching the flock */
+      cursor: crosshair;
+    }
+
+    .controls {
+      margin-top: 16px;
+      padding: 16px;
+      background: var(--panel-bg);
+      border-radius: var(--radius);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px 24px;
+    }
+
+    label { display: block; font-size: 0.9rem; font-weight: 600; }
+    label span { float: right; font-weight: 400; opacity: 0.7; }
+    input[type="range"] { width: 100%; accent-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Boids</h1>
+    <p class="hint">Hold left click (or touch) to attract the flock. Hold right click to scare it away.</p>
+
+    <canvas id="canvas" oncontextmenu="event.preventDefault()" tabindex="-1"></canvas>
+
+    <section class="controls" aria-label="Flock controls">
+      <label>Separation <span id="separation-value">1.6</span>
+        <input id="separation" type="range" min="0" max="4" step="0.1" value="1.6">
+      </label>
+      <label>Alignment <span id="alignment-value">1.0</span>
+        <input id="alignment" type="range" min="0" max="4" step="0.1" value="1.0">
+      </label>
+      <label>Cohesion <span id="cohesion-value">0.9</span>
+        <input id="cohesion" type="range" min="0" max="4" step="0.1" value="0.9">
+      </label>
+      <label>Flock size <span id="count-value">250</span>
+        <input id="count" type="range" min="10" max="800" step="10" value="250">
+      </label>
+    </section>
+  </main>
+
+  <script>
+    // Slider id, the C++ function it calls, and the argument type for each control
+    const sliderBindings = [
+      { id: 'separation', cFunction: 'set_separation_weight', type: 'number' },
+      { id: 'alignment', cFunction: 'set_alignment_weight', type: 'number' },
+      { id: 'cohesion', cFunction: 'set_cohesion_weight', type: 'number' },
+      { id: 'count', cFunction: 'set_boid_count', type: 'number' },
+    ];
+
+    // Wires each slider to its C++ function once the WebAssembly module is ready
+    function bindSliders() {
+      sliderBindings.forEach(({ id, cFunction, type }) => {
+        const slider = document.getElementById(id);
+        const valueLabel = document.getElementById(id + '-value');
+
+        slider.addEventListener('input', () => {
+          const sliderValue = Number(slider.value);
+          valueLabel.textContent = sliderValue;
+          Module.ccall(cFunction, null, [type], [sliderValue]);
+        });
+      });
+    }
+
+    // Emscripten reads this Module object before it starts
+    var Module = {
+      canvas: document.getElementById('canvas'),
+      onRuntimeInitialized: bindSliders,
+    };
+  </script>
+
+  {{{ SCRIPT }}}
+</body>
+</html>
