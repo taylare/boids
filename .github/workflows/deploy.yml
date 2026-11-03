@@ -1,0 +1,63 @@
+# Builds the C++ boids program to WebAssembly and publishes it to GitHub Pages.
+# One-time setup: repo Settings > Pages > Build and deployment > Source: "GitHub Actions".
+name: Build and deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  # Lets you run the workflow by hand from the Actions tab
+  workflow_dispatch:
+
+# Permissions the Pages deployment needs
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one deployment at a time, newer pushes replace queued ones
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      # Pull the repository code onto the runner
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      # Install the Emscripten compiler toolchain
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+
+      # Compile C++ to WebAssembly, using shell.html as the page template
+      - name: Build with emcc
+        run: |
+          mkdir -p dist
+          emcc boids.cpp \
+            -O3 \
+            -std=c++17 \
+            -sUSE_SDL=2 \
+            -sALLOW_MEMORY_GROWTH=1 \
+            -sEXPORTED_RUNTIME_METHODS=ccall \
+            --shell-file shell.html \
+            -o dist/index.html
+
+      # Package the dist folder for GitHub Pages
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      # Publish the artifact, the live URL appears in the job summary
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
